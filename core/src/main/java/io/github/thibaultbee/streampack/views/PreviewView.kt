@@ -25,8 +25,10 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener
 import android.view.SurfaceHolder
+import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.core.app.ActivityCompat
 import io.github.thibaultbee.streampack.R
 import io.github.thibaultbee.streampack.logger.Logger
@@ -43,17 +45,18 @@ import io.github.thibaultbee.streampack.utils.*
 class PreviewView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyle: Int = 0
+    defStyle: Int = 0,
+    overlayImageResId: Int
 ) : FrameLayout(context, attrs, defStyle) {
     private val surfaceView = AutoFitSurfaceView(context)
     private val cameraFacingDirection: FacingDirection
     private val defaultCameraId: String?
-
+    
     var enableZoomOnPinch: Boolean
     var enableTapToFocus: Boolean
-
+    
     private var touchUpEvent: MotionEvent? = null
-
+    
     var streamer: ICameraStreamer? = null
         /**
          * Set the [ICameraStreamer] to use.
@@ -65,20 +68,22 @@ class PreviewView @JvmOverloads constructor(
             field = value
             startPreviewIfReady()
         }
-
+    
     /**
      * The [Listener] to listen to specific view events.
      */
     var listener: Listener? = null
-
+    
     private val pinchGesture = ScaleGestureDetector(
         context,
         PinchToZoomOnScaleGestureListener()
     )
-
+    
+    private val overlayImageView: ImageView
+    
     init {
         val a = context.obtainStyledAttributes(attrs, R.styleable.PreviewView)
-
+        
         try {
             cameraFacingDirection = FacingDirection.fromValue(
                 a.getString(R.styleable.PreviewView_cameraFacingDirection)
@@ -92,7 +97,7 @@ class PreviewView @JvmOverloads constructor(
                     context.getBackCameraList().firstOrNull()
                 }
             }
-
+            
             enableZoomOnPinch =
                 a.getBoolean(R.styleable.PreviewView_enableZoomOnPinch, true)
             enableTapToFocus =
@@ -100,17 +105,22 @@ class PreviewView @JvmOverloads constructor(
         } finally {
             a.recycle()
         }
-
+        
+        // Add the AutoFitSurfaceView to the FrameLayout
         surfaceView.holder.addCallback(StreamerHolderCallback())
         addView(surfaceView)
+    
+        overlayImageView = ImageView(context)
+        overlayImageView.setImageResource(overlayImageResId) // Set the overlay image resource ID
+        overlayImageView.visibility = View.INVISIBLE // Hide the overlay initially
+        addView(overlayImageView)
     }
-
-
+    
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (streamer == null) {
             return super.onTouchEvent(event)
         }
-
+        
         if (enableZoomOnPinch) {
             pinchGesture.onTouchEvent(event)
         }
@@ -127,10 +137,10 @@ class PreviewView @JvmOverloads constructor(
             // invoked twice.
             return true
         }
-
+        
         return true
     }
-
+    
     override fun performClick(): Boolean {
         streamer?.let { it ->
             if (enableTapToFocus) {
@@ -143,19 +153,19 @@ class PreviewView @JvmOverloads constructor(
                     OrientationUtils.getSurfaceOrientation(display.rotation)
                 )
             }
-
+            
         }
         touchUpEvent = null
         return super.performClick()
     }
-
+    
     private fun startPreviewIfReady(shouldFailSilently: Boolean = false) {
         if (display != null) {
             streamer?.let {
                 try {
                     val camera = defaultCameraId ?: it.camera
                     Logger.i(TAG, "Starting on camera: $camera")
-
+                    
                     // Selects appropriate preview size
                     val previewSize = getPreviewOutputSize(
                         this.display,
@@ -168,7 +178,7 @@ class PreviewView @JvmOverloads constructor(
                     )
                     Logger.d(TAG, "Selected preview size: $previewSize")
                     surfaceView.setAspectRatio(previewSize.width, previewSize.height)
-
+                    
                     // To ensure that size is set, initialize camera in the view's thread
                     post {
                         if (ActivityCompat.checkSelfPermission(
@@ -191,7 +201,12 @@ class PreviewView @JvmOverloads constructor(
             }
         }
     }
-
+    
+    // Additional method to show/hide the overlay image
+    fun showOverlayImage(show: Boolean) {
+        overlayImageView.visibility = if (show) View.VISIBLE else View.INVISIBLE
+    }
+    
     companion object {
         private val DEFAULT_CAMERA_FACING = FacingDirection.BACK
     }
